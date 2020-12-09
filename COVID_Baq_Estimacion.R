@@ -19,22 +19,23 @@
 
 ####################################################################################################
 #
-# Ultima actualización: 18 de Noviembre de 2020
+# Ultima actualización: 24 de Noviembre de 2020
 #
 ####################################################################################################
 
 ####################################################################################################
 # Parametros requeridos para correr el codigo
 # Cargar codigo base
-source(paste(path,'/librerias_requeridas.R',sep=''), chdir = TRUE)
+source(paste(path,'COVID_Baq_librerias.R',sep=''), chdir = TRUE)
 
 # Parametros de corrida
-path.dat		<-	" " #definir el directorio para guardar o buscar los datos. 
-download		<-	FALSE #Definir si se quiere descargar los datos o buscar en el directorio.
-plot.it			<-	TRUE	# Para generar las figuras de la estimación
-path.figs		<-	" "# Ruta para guardar las figuras
-save.it			<-	TRUE # Para guardar los resultados compilados en la lista
-save.path		<-	" "# Ruta para guardar los resultados
+# Descomentar esta sección y definir los parametros
+#path.dat		<-	'COVID_package_v1/' #definir el directorio para guardar o buscar los datos. 
+#download		<-	T #Definir si se quiere descargar los datos o buscar en el directorio.
+#plot.it			<-	T	# Para generar las figuras de la estimación
+#path.figs		<-	'../Figures/' # Ruta para guardar las figuras
+#save.it			<-	TRUE # Para guardar los resultados compilados en la lista
+#save.path		<-	'../RData/' # Ruta para guardar los resultados
 
 resultados	<-	list() # Guarda los resultados
 
@@ -52,7 +53,10 @@ data.ciudad	<-	getCOVID.data(wd=path.dat
 
 #calculo Rt
 Rt_nuevos.casos		<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,1]>0,2]
-Rt.baq		<-	rt.calc(x=Rt_nuevos.casos)
+break.pt		<-	which(names(Rt_nuevos.casos)=="2020-09-01")	
+Rt.baq		<-	rt.calc(x=Rt_nuevos.casos[1:break.pt],type="logistic")
+Rt.baq2		<-	rt.calc(x=Rt_nuevos.casos[(break.pt-19):length(Rt_nuevos.casos)],type="linear")
+Rt.baq		<-	rbind(Rt.baq,Rt.baq2)
 Rt_fechas		<-	as.Date(names(Rt_nuevos.casos))
 Rt_n.obs	<-	length(Rt_nuevos.casos)
 
@@ -206,10 +210,10 @@ dev.off()
 
 ###########################################################################################
 # Estimación de las muertes a través de la epidemia
-mort.dat			<-	data.ciudad$Barranquilla[data.ciudad$Barranquilla[,3]>0,3]
+mort.dat			<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,3]>0,3]
 baq.mort.mles	<-	gen.log.optim(mort.dat,hessian=TRUE)
 
-new.cases			<-	data.ciudad$Barranquilla[data.ciudad$Barranquilla[,3]>0,4]
+new.cases			<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,3]>0,4]
 
 K		<-	baq.mort.mles$mles["K","MLE"]
 r		<-	baq.mort.mles$mles["r","MLE"]
@@ -298,7 +302,7 @@ if(plot.it){
 
 ###########################################################################################
 # Estimación del Recuperados
-recov.dat		<-	data.ciudad$Barranquilla[data.ciudad$Barranquilla[,5]>0,5]
+recov.dat		<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,5]>0,5]
 baq.recov.mles	<-	gen.log.optim(recov.dat,hessian=TRUE)
 
 K	<-	baq.recov.mles$mles["K","MLE"]
@@ -312,7 +316,7 @@ baq.pred.ci	<-	gen.log.cis(baq.recov.mles,len=obs.len,Bsims=10000,sim.dist="NegB
 baq.proy	<-	gen.log.predict(baq.recov.mles,t0=obs.len,len=30,Bsims=10000,sim.dist="NegBin")
 baq.risk	<-	gen.log.risk(baq.proy,threshold=1:100)
 
-new.cases			<-	data.ciudad$Barranquilla[data.ciudad$Barranquilla[,5]>0,6]
+new.cases			<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,5]>0,6]
 
 first.date	<-	head(names(recov.dat),n=1)
 obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=obs.len)
@@ -394,38 +398,97 @@ dev.off()
 #
 #######################################################################
 alcaldia.locs	<-	c("METROPOLITANA","NORTE - CENTRO HISTORICO","RIOMAR","SUROCCIDENTE","SURORIENTE","NA")			
-data.locs	<-	getCOVID.data(wd=paste(path.dat,"Data",sep=""),location=alcaldia.locs,type="Distritos"
+data.locs	<-	getCOVID.data(wd=paste(path.dat,"Data",sep=""),location=alcaldia.locs,type=NA
 								,download=download,date.type="Diagnostico"
 								,data.origin="Alcaldia")
 
 for (i in 1:length(alcaldia.locs)){
   #calculo Rt
 	inf.dat		<-	data.locs[[i]][data.locs[[i]][,1]>0,1]
-	
+
+	break.pt		<-	which(names(inf.dat)=="2020-09-01")	
 	Rt_nuevos.casos		<-	data.locs[[i]][data.locs[[i]][,1]>0,2]
-	Rt.baq		<-	rt.calc(x=Rt_nuevos.casos)
+	Rt.baq		<-	rt.calc(x=Rt_nuevos.casos[1:break.pt],type="logistic")
+	Rt.baq2		<-	rt.calc(x=Rt_nuevos.casos[(break.pt-19):length(inf.dat)],type="linear")
+	Rt.baq		<-	rbind(Rt.baq,Rt.baq2)
 	Rt_fechas		<-	as.Date(names(Rt_nuevos.casos))
 	Rt_n.obs	<-	length(Rt_nuevos.casos)
 	
-	
-	ith.inf.mles<-	gen.log.optim(x=inf.dat)
+
+	ith.inf.mles<-	gen.log.optim(x=inf.dat[1:break.pt])
 	K	<-	ith.inf.mles$mles["K","MLE"]
 	r	<-	ith.inf.mles$mles["r","MLE"]
 	theta	<-	ith.inf.mles$mles["theta","MLE"]
 	alpha	<-	ith.inf.mles$mles["alpha","MLE"]
 
-	obs.len		<-	length(inf.dat)
+	tot.len	<-	length(inf.dat)
+
+	obs.len		<-	length(inf.dat[1:break.pt])
 	ithloc.pred	<-	gen.log.mod(K,r,theta,alpha,t=1:obs.len)
-	ithloc.pred.ci	<-	gen.log.cis(gen.log.optim.out=ith.inf.mles,len=obs.len,Bsims=10000,sim.dist="NegBin",mean.width=40)
-	ithloc.proy	<-	gen.log.predict(ith.inf.mles,t0=obs.len,len=30,Bsims=10000,sim.dist="NegBin",mean.width=40)
-	ithloc.risk	<-	gen.log.risk(gen.log.proy.out=ithloc.proy,threshold=1:50)
+	ithloc.pred.ci	<-	gen.log.cis(gen.log.optim.out=ith.inf.mles,len=obs.len,Bsims=10000,sim.dist="NegBin",mean.width=20)
+
+	# En caso de requerir un proyección con base en el modelo logistico generalizado.
+	#ith.proy	<-	gen.log.predict(ith.inf.mles,t0=obs.len,len=30,Bsims=10000,sim.dist="NegBin",mean.width=20)
+	#ith.risk	<-	gen.log.risk(gen.log.proy.out=ith.proy,threshold=1:50)
+
+	# Sin embargo, hasta el 18 de Noviembre de 2020 la tasa de crecimiento posterior a la culminación de la
+	# primera ola no es suficiente para estimar los parametros de una nueva curva logistica. De esta forma 
+	# toamamos una aproximación diferente.
+
+	new.cases		<-	data.locs[[i]][data.locs[[i]][,1]>0,2]
+
+	# Estimación del número de infectados fase 2.
+	# Modelando los casos nuevos
+	# Casos nuevos
+
+	new.cases2	<-	new.cases[(break.pt+1):(tot.len-4)]
+
+	# Modelo Poisson
+	x.vals		<-	1:length(new.cases2)
+	mod2		<-	glm(new.cases2~x.vals,family="poisson")
+	# Modelo Negativo Binomial
+	mod2.1	<-	glm.nb(new.cases2~x.vals)
+
+	# Predicción del modelo negativo binomial 30 días en el futuro
+	pred.xvals	<-	1:(length(new.cases2)+34)
+	mod2.pred<-	predict(mod2.1,newdata=data.frame(x.vals=pred.xvals),type="response")
+
+	# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
+	Bsims	<-	1000
+	n.cases	<-	length(new.cases2)
+	boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+	for(j in 1:Bsims){
 	
+		ith.dat	<-	rnbinom(n.cases,mu=new.cases2,size=mod2.1$theta)
+		ith.mod	<-	glm.nb(ith.dat~x.vals)
+		ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+		boot.mat[j,]<-	ith.predict
+
+	}
+
+	mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+
+	obs.len2		<-	length(new.cases2)+4
+	Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+	cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(ithloc.pred.ci$Predicted[,1],n=1)
+						,cumsum(Predicted.new.mat[,2])+tail(ithloc.pred.ci$Predicted[,2],n=1)
+						,cumsum(Predicted.new.mat[,3])+tail(ithloc.pred.ci$Predicted[,3],n=1))
+	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])	
+
+	# Estimación del riesgo
+	ithloc.risk	<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:200)
+
 	first.date	<-	head(names(inf.dat),n=1)
-	obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=obs.len)
+	obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=tot.len)
 	last.date	<-	tail(names(inf.dat),n=1)
 	proy.dates<-seq.Date(as.Date(last.date),by="days",length.out=30)
+
+	# Actualización de los resultados dados los dos modelos
+	ithloc.pred.ci$Predicted	<-	rbind(ithloc.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+	ithloc.pred.ci$Predicted.new	<-	rbind(ithloc.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+	ithloc.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
 	
-	new.cases	<-	data.locs[[i]][data.locs[[i]][,1]>0,2]
 	Datos=data.frame(acumulado=inf.dat,dario=new.cases)
 	
 	resultados$Barranquilla$Localidades[[i]]	<-	list(Estimacion=ith.inf.mles,Prediccion=ithloc.pred.ci
@@ -508,27 +571,81 @@ data.ciudad	<-	getCOVID.data(wd=path.dat
 # Estimación del número de infectados
 for(i in 2:(length(ciudades)+1)){
 	inf.dat		<-	data.ciudad[[i-1]][data.ciudad[[i-1]][,1]>0,1]
-	inf.mles		<-	gen.log.optim(x=inf.dat)
-	K			<-	inf.mles$mles["K","MLE"]
-	r			<-	inf.mles$mles["r","MLE"]
-	theta		<-	inf.mles$mles["theta","MLE"]
-	alpha		<-	inf.mles$mles["alpha","MLE"]
+	break.pt		<-	which(names(inf.dat)=="2020-09-01")
+	inf.mles<-	gen.log.optim(x=inf.dat[1:break.pt])
+	K	<-	inf.mles$mles["K","MLE"]
+	r	<-	inf.mles$mles["r","MLE"]
+	theta	<-	inf.mles$mles["theta","MLE"]
+	alpha	<-	inf.mles$mles["alpha","MLE"]
+
+	tot.len	<-	length(inf.dat)
 	
 	mean.width=40
-		
-	obs.len		<-	length(inf.dat)
+
+	obs.len		<-	length(inf.dat[1:break.pt])
 	if(inf.mles$mles["theta","97.5%"]+mean.width>obs.len){mean.width<-obs.len-inf.mles$mles["theta","97.5%"]}
 	ithciud.pred	<-	gen.log.mod(K,r,theta,alpha,t=1:obs.len)
 	ithciud.pred.ci	<-	gen.log.cis(gen.log.optim.out=inf.mles,len=obs.len,Bsims=10000,sim.dist="NegBin",mean.width=mean.width)
-	ithciud.proy	<-	gen.log.predict(inf.mles,t0=obs.len,len=30,Bsims=10000,sim.dist="NegBin",mean.width=mean.width)
+
+	# En caso de requerir un proyección con base en el modelo logistico generalizado.
+	#ith.proy	<-	gen.log.predict(ith.inf.mles,t0=obs.len,len=30,Bsims=10000,sim.dist="NegBin",mean.width=20)
+	#ith.risk	<-	gen.log.risk(gen.log.proy.out=ith.proy,threshold=1:50)
+
+	# Sin embargo, hasta el 18 de Noviembre de 2020 la tasa de crecimiento posterior a la culminación de la
+	# primera ola no es suficiente para estimar los parametros de una nueva curva logistica. De esta forma 
+	# toamamos una aproximación diferente.
+
+	new.cases	<-	data.ciudad[[i-1]][data.ciudad[[i-1]][,1]>0,2]
+
+	# Estimación del número de infectados fase 2.
+	# Modelando los casos nuevos
+	# Casos nuevos
+
+	new.cases2	<-	new.cases[(break.pt+1):(tot.len-4)]
+
+	# Modelo Poisson
+	x.vals		<-	1:length(new.cases2)
+	mod2		<-	glm(new.cases2~x.vals,family="poisson")
+	# Modelo Negativo Binomial
+	mod2.1	<-	glm.nb(new.cases2~x.vals)
+
+	# Predicción del modelo negativo binomial 30 días en el futuro
+	pred.xvals	<-	1:(length(new.cases2)+34)
+	mod2.pred<-	predict(mod2.1,newdata=data.frame(x.vals=pred.xvals),type="response")
+
+	# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
+	Bsims	<-	1000
+	n.cases	<-	length(new.cases2)
+	boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+	for(j in 1:Bsims){
 	
-	
+		ith.dat	<-	rnbinom(n.cases,mu=new.cases2,size=mod2.1$theta)
+		ith.mod	<-	glm.nb(ith.dat~x.vals)
+		ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+		boot.mat[j,]<-	ith.predict
+
+	}
+
+	mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+
+	obs.len2		<-	length(new.cases2)+4
+	Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+	cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(ithciud.pred.ci$Predicted[,1],n=1)
+						,cumsum(Predicted.new.mat[,2])+tail(ithciud.pred.ci$Predicted[,2],n=1)
+						,cumsum(Predicted.new.mat[,3])+tail(ithciud.pred.ci$Predicted[,3],n=1))
+	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])	
+
 	first.date	<-	head(names(inf.dat),n=1)
-	obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=obs.len)
+	obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=tot.len)
 	last.date	<-	tail(names(inf.dat),n=1)
 	proy.dates<-seq.Date(as.Date(last.date),by="days",length.out=30)
+
+	# Actualización de los resultados dados los dos modelos
+	ithciud.pred.ci$Predicted	<-	rbind(ithciud.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+	ithciud.pred.ci$Predicted.new	<-	rbind(ithciud.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+	ithciud.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
 	
-	new.cases	<-	data.ciudad[[i-1]][data.ciudad[[i-1]][,1]>0,2]
 	Datos=data.frame(acumulado=inf.dat,dario=new.cases)
 	
 	resultados[[i]]<-	list(Estimacion=inf.mles,Prediccion=ithciud.pred.ci
