@@ -2,7 +2,7 @@
 #
 # Funciones para la estimación de parametros utilizando máxima verosimilitud via optimización numérica
 # o clonación de datos.
-# Ultima actualización: 18 de Noviembre de 2020
+# Ultima actualización: 9 de Diciembre de 2020
 #
 ####################################################################################################
 
@@ -288,12 +288,13 @@ gen.log.optim	<-	function(x,inits,hessian=TRUE,method="BFGS",ntest=10){
 # sim.dist = Distribución utilizada para la simulación de los datos.
 # mean.width = número de observaciones antes y despues del pico para incluir en la estimación 
 #				de la varianza de la distribución Negativa Binomial.
+# n0		= valor inicial del número de casos nuevos
 # Salida:
 # Lista con:
 # Predicted = Matriz con los valores predichos para el número acumulado de infectados y sus intervalos de confianza.
 # Predicted.new = Matriz con los valores predichos para el número nuevo de infectados y sus intervalos de confianza.
 
-gen.log.cis	<-	function(gen.log.optim.out,len,Bsims=1000,sim.dist=c("Poisson","NegBin"),mean.width=20){
+gen.log.cis	<-	function(gen.log.optim.out,len,Bsims=1000,sim.dist=c("Poisson","NegBin"),mean.width=20,n0){
 	
 	mles<-gen.log.optim.out$mles[,"MLE"]
 	K<-mles[1]
@@ -302,30 +303,38 @@ gen.log.cis	<-	function(gen.log.optim.out,len,Bsims=1000,sim.dist=c("Poisson","N
 	sims		<-	matrix(0,nrow=Bsims,ncol=len)
 	sims.new<-	matrix(0,nrow=Bsims,ncol=len)
 	v.cov	<-	diag(diag(gen.log.optim.out$fish.inv))
-	mvn.draws4sim <- t(rmvnorm(n=Bsims, mean=log(mles),sigma=v.cov))
+	mvn.draws4sim <- t(rmvnorm(n=Bsims, mean=c(log(mles[1:3]),qlogis(mles[4])),sigma=v.cov))
 	mvn.draws4sim[1:3,] <-	exp(mvn.draws4sim[1:3,])
 	mvn.draws4sim[4,] <-	plogis(mvn.draws4sim[4,])
 	# gamma		  <-	1/14
 	# beta.draws	<-	mvn.draws4sim[2,]+gamma		  
 	# alpha.draws			<-	1-gamma/beta.draws
 	# mvn.draws4sim	<-	rbind(mvn.draws4sim,alpha.draws)
+	
 	for(i in 1:Bsims){
 		
 		ith.K		<-	mvn.draws4sim[1,i]
 		ith.r		<-	mvn.draws4sim[2,i]
 		ith.theta	<-	mvn.draws4sim[3,i]
 		ith.alpha	<-	min(1,mvn.draws4sim[4,i])
-		
+			
 		ith.det			<-	gen.log.mod(ith.K,ith.r,ith.theta,ith.alpha,1:(len))
-		ith.newcases.det<-	c(ith.det[1],ith.det[2:len]-ith.det[1:(len-1)])
-		mu		<-	mean(ith.newcases.det[(theta-mean.width):(theta+mean.width)])
-		s2		<-	var(ith.newcases.det[(theta-mean.width):(theta+mean.width)])
-		if(s2<mu){s2<-mu}
-		k.hat	<-	mu^2/(s2-mu)
+		if(missing(n0)){n0.hat<-ith.det[1]}else{n0.hat<-n0}
+		ith.newcases.det<-	c(n0.hat,ith.det[2:len]-ith.det[1:(len-1)])
 		sims.new[i,]<-	switch(sim.dist,Poisson=rpois(len,ith.newcases.det)
-											,NegBin=rnbinom(len,mu=ith.newcases.det,
-															,size=k.hat))
-		sims[i,]	<-	cumsum(sims.new[i,])
+									 ,NegBin={	if((theta-mean.width)>length(ith.newcases.det)){
+									 				mu	<-	mean(ith.newcases.det)
+									 				s2	<-	var(ith.newcases.det)
+									 			}else{
+									 			mu		<-	mean(ith.newcases.det[(theta-mean.width):(theta+mean.width)],na.rm=TRUE)
+												s2		<-	var(ith.newcases.det[(theta-mean.width):(theta+mean.width)],na.rm=TRUE)}
+												if(s2<mu){s2<-mu}
+												k.hat	<-	mu^2/(s2-mu)
+												rnbinom(len,mu=ith.newcases.det,
+															,size=k.hat)})
+		if(missing(n0)){
+			sims[i,]	<-	cumsum(sims.new[i,])
+		}else{sims[i,]	<-	cumsum(c(ith.det[1],sims.new[i,2:len]))}
 
 	}
 	
@@ -368,23 +377,29 @@ recov.nll	<-	function(par,x){
 # Matriz con el valor promedio y los quantiles 2.5% y 97.5% de la distribución de Rt dados
 # las observaciones y los parametros del intervalo serial.
 
-rt.calc	<-	function(x,Bsims=1000,ser.int.max=20,mean.ser.int=4.79,sd.ser.int=2.9){
+rt.calc	<-	function(x,Bsims=1000,ser.int.max=20,mean.ser.int=4.79,sd.ser.int=2.9,type=c("logistic","linear")){
 	
 	new.cases	<-	x
 	n.obs		<-	length(new.cases)
-	opt			<-	gen.log.optim(cumsum(new.cases))
-	predicted	<-gen.log.mod(K=opt$mles["K","MLE"]
+	x.vals		<-	1:n.obs
+	opt			<-	switch(type,logistic=gen.log.optim(cumsum(new.cases))
+							,linear=glm.nb(new.cases~x.vals))
+
+	predicted	<-switch(type,logistic={
+							tmp<-gen.log.mod(K=opt$mles["K","MLE"]
 							,r=opt$mles["r","MLE"]
 							,opt$mles["theta","MLE"]
 							,opt$mles["alpha","MLE"],t=1:n.obs)
-	predicted	<-	c(predicted[1],predicted[2:n.obs]-predicted[1:(n.obs-1)])
-	
+							c(tmp[1],tmp[2:n.obs]-tmp[1:(n.obs-1)])		
+							}
+							,linear=predict(opt,type="response"))
+
 	rt.sim	<-	matrix(0,nrow=Bsims,ncol=n.obs)
 	meanlog	<-	log(mean.ser.int)
 	sdlog	<-	log(sd.ser.int)
-	
+		
 	for(j in 1:Bsims){
-		sims		<-	rpois(1:n.obs,predicted)
+		sims		<-	rpois(n.obs,predicted)
 		for(i in (ser.int.max+1):n.obs){
 			rt.sim[j,i]	<-	sims[i]/sum((sims[(i-ser.int.max):(i-1)]*dlnormTrunc(ser.int.max:1,meanlog,sdlog)))
 		}
@@ -397,7 +412,6 @@ rt.calc	<-	function(x,Bsims=1000,ser.int.max=20,mean.ser.int=4.79,sd.ser.int=2.9
 	colnames(rt)	<-	c("lower","Mean","Upper")
 	
 	rt	<-	rt[-(1:(ser.int.max)),]
-	
 	return(rt)
 
 }

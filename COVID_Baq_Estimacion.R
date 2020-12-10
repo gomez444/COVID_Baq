@@ -19,7 +19,7 @@
 
 ####################################################################################################
 #
-# Ultima actualización: 24 de Noviembre de 2020
+# Ultima actualización: 9 de Diciembre de 2020
 #
 ####################################################################################################
 
@@ -76,13 +76,7 @@ obs.len		<-	length(inf.dat[1:break.pt])
 baq.pred	<-	gen.log.mod(K,r,theta,alpha,t=1:obs.len)
 baq.pred.ci	<-	gen.log.cis(gen.log.optim.out=baq.inf.mles,len=obs.len,Bsims=10000,sim.dist="NegBin",mean.width=20)
 
-# En caso de requerir un proyección con base en el modelo logistico generalizado.
-#baq.proy	<-	gen.log.predict(baq.inf.mles,t0=obs.len,len=30,Bsims=10000,sim.dist="NegBin",mean.width=20)
-#baq.risk	<-	gen.log.risk(gen.log.proy.out=baq.proy,threshold=1:50)
-
-# Sin embargo, hasta el 18 de Noviembre de 2020 la tasa de crecimiento posterior a la culminación de la
-# primera ola no es suficiente para estimar los parametros de una nueva curva logistica. De esta forma 
-# toamamos una aproximación diferente.
+# Estimación del número de infectados fase 2 a partir de Septiembre 1 de 2020
 
 new.cases			<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,1]>0,2]
 
@@ -94,49 +88,127 @@ new.cases2	<-	new.cases[(break.pt+1):(tot.len-4)]
 
 # Modelo Poisson
 x.vals		<-	1:length(new.cases2)
-mod2		<-	glm(new.cases2~x.vals,family="poisson")
+mod2			<-	glm(new.cases2~x.vals,family="poisson")
+poisson.pred		<-	cumsum(c(tail(baq.pred,n=1),predict(mod2,type="response")))
+rmse.poisson		<-	sqrt(mean((inf.dat[1:(tot.len-4)] - c(baq.pred,poisson.pred[-1]))^2))
 # Modelo Negativo Binomial
 mod2.1	<-	glm.nb(new.cases2~x.vals)
+nb.pred	<-	cumsum(c(tail(baq.pred,n=1),predict(mod2.1,type="response")))
+rmse.nb	<-	sqrt(mean((inf.dat[1:(tot.len-4)] - c(baq.pred,nb.pred[-1]))^2))
 
-# Predicción del modelo negativo binomial 30 días en el futuro
-pred.xvals	<-	1:(length(new.cases2)+34)
-mod2.pred<-	predict(mod2.1,newdata=data.frame(x.vals=pred.xvals),type="response")
+# Modelo logistico
+inf.dat2		<-	inf.dat[(break.pt+1):(tot.len-4)]
+mod3		<-	gen.log.optim(x=inf.dat2)
+K2	<-	mod3$mles["K","MLE"]
+r2	<-	mod3$mles["r","MLE"]
+theta2	<-	mod3$mles["theta","MLE"]
+alpha2	<-	mod3$mles["alpha","MLE"]
+genlog.pred	<-	c(baq.pred,gen.log.mod(K2,r2,theta2,alpha2,t=1:length(inf.dat2)))
+rmse.genlog2	<-	sqrt(mean((inf.dat[1:(tot.len-4)] - genlog.pred)^2))
 
-# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
-Bsims	<-	1000
-n.cases	<-	length(new.cases2)
-boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+# Selección del mejor modelo según el crecimiento
+best.mod		<-	which.min(c(rmse.poisson,rmse.nb,rmse.genlog2))
 
-for(i in 1:Bsims){
+
+if(best.mod==1){
+	# Modelo de poisson es el mejor de acuerdo con la raíz cuadrada del error medio	
+	pred.xvals	<-	1:(length(new.cases2)+34)
+	mod2.pred<-	predict(mod2,newdata=data.frame(x.vals=pred.xvals),type="response")
+
+	# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
+	Bsims	<-	1000
+	n.cases	<-	length(new.cases2)
+	boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+	for(i in 1:Bsims){
 	
-	ith.dat	<-	rnbinom(n.cases,mu=new.cases2,size=mod2.1$theta)
-	ith.mod	<-	glm.nb(ith.dat~x.vals)
-	ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
-	boot.mat[i,]<-	ith.predict
+		ith.dat	<-	rpois(n.cases,lambda=new.cases2)
+		ith.mod	<-	glm(ith.dat~x.vals,family="poisson")
+		ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+		boot.mat[i,]<-	ith.predict
 	
-}
+	}
 
-mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+	mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
 
-obs.len2	<-	length(new.cases2)+4
-Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
-cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(baq.pred.ci$Predicted[,1],n=1)
+	obs.len2	<-	length(new.cases2)+4
+	Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+	cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(baq.pred.ci$Predicted[,1],n=1)
 					,cumsum(Predicted.new.mat[,2])+tail(baq.pred.ci$Predicted[,2],n=1)
 					,cumsum(Predicted.new.mat[,3])+tail(baq.pred.ci$Predicted[,3],n=1))
-boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])	
+	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])
+	
+	# Estimación del riesgo
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:300)
+	
+	# Actualización de los resultados dados los dos modelos
+	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+	baq.pred.ci$Predicted.new	<-	rbind(baq.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+	baq.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
+	
+		
+}else if(best.mod==2){
+	# Modelo negativo binomial es el mejor de acuerdo con la raíz cuadrada del error medio
+	pred.xvals	<-	1:(length(new.cases2)+34)
+	mod2.pred<-	predict(mod2.1,newdata=data.frame(x.vals=pred.xvals),type="response")
 
-# Estimación del riesgo
-baq.risk	<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:200)
+	# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
+	Bsims	<-	1000
+	n.cases	<-	length(new.cases2)
+	boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+	for(i in 1:Bsims){
+	
+		ith.dat	<-	rnbinom(n.cases,mu=new.cases2,size=mod2.1$theta)
+		ith.mod	<-	glm.nb(ith.dat~x.vals)
+		ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+		boot.mat[i,]<-	ith.predict
+	
+	}
+
+	mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+
+	obs.len2	<-	length(new.cases2)+4
+	Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+	cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(baq.pred.ci$Predicted[,1],n=1)
+						,cumsum(Predicted.new.mat[,2])+tail(baq.pred.ci$Predicted[,2],n=1)
+						,cumsum(Predicted.new.mat[,3])+tail(baq.pred.ci$Predicted[,3],n=1))
+	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])
+	
+	# Estimación del riesgo
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:300)
+	
+	# Actualización de los resultados dados los dos modelos
+	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+	baq.pred.ci$Predicted.new	<-	rbind(baq.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+	baq.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
+	
+} else{
+	# Modelo logistico generalizado es el mejor de acuerdo con la raíz cuadrada del error medio
+	pred.xvals	<-	1:(length(new.cases2)+4)
+	mod3.pred	<-	gen.log.mod(K2,r2,theta2,alpha2,t=pred.xvals)
+	new.cases.init	<-	new.cases2[1]
+	mod3.ci		<-	tryCatch(gen.log.cis(gen.log.optim.out=mod3,len=length(pred.xvals),Bsims=10000,sim.dist="NegBin",mean.width=20,n0=new.cases.init)
+							,error=function(e){gen.log.cis(gen.log.optim.out=mod3,len=length(pred.xvals),Bsims=10000,sim.dist="Poisson",n0=new.cases.init)})
+	obs.len2	<-	length(new.cases2)+4
+	mod3.proy	<-	tryCatch(gen.log.predict(mod3,t0=obs.len2,len=30,Bsims=10000,sim.dist="NegBin",mean.width=20,n0=new.cases.init)
+							,error=function(e)gen.log.predict(mod3,t0=obs.len2,len=30,Bsims=10000,sim.dist="Poisson",n0=new.cases.init))
+							
+	# Actualización de los resultados dados los dos modelos
+	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,mod3.ci$Predicted)
+	baq.pred.ci$Predicted.new	<-	rbind(baq.pred.ci$Predicted.new,mod3.ci$Predicted.new)
+	baq.proy		<-	mod3.proy
+	
+	# Estimación del riesgo
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=baq.proy,threshold=50:300)
+	
+}
 
 first.date	<-	head(names(inf.dat),n=1)
 obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=tot.len)
 last.date	<-	tail(names(inf.dat),n=1)
 proy.dates<-seq.Date(as.Date(last.date),by="days",length.out=30)
 
-# Actualización de los resultados dados los dos modelos
-baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
-baq.pred.ci$Predicted.new	<-	rbind(baq.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
-baq.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
 
 Datos=data.frame(acumulado=inf.dat,dario=new.cases)
 
@@ -187,16 +259,16 @@ if(plot.it){
 	mtext("B.",side=3,adj=0.1)
 	
 	# Figura C. Probabilidad de observar un número determinado de casos nuevos
-	image(x=proy.dates,y=50:200,t(baq.risk),zlim=c(0,1),xlim=range(proy.dates)
-		,ylim=c(50,200),col=rev(my.col.ramp(151)),xlab="",ylab="Número de casos nuevos"
+	image(x=proy.dates,y=50:300,t(baq.risk),zlim=c(0,1),xlim=range(proy.dates)
+		,ylim=c(50,300),col=rev(my.col.ramp(251)),xlab="",ylab="Número de casos nuevos"
 		,cex.axis=0.7,cex.lab=0.7)
 	box()
 	mtext("C.",side=3,adj=0.1)
 	par(mar=c(2.5,2.5,0,1))
-	image(x=50:200,y=1,z=matrix(seq(0,1,length.out=151),ncol=1),col=rev(my.col.ramp(151))
+	image(x=50:300,y=1,z=matrix(seq(0,1,length.out=251),ncol=1),col=rev(my.col.ramp(251))
 			,xaxt="n",yaxt="n",xlab="Probabilidad de nuevos casos",cex.lab=0.7,ylab="")
 	box()
-	axis(1,at=seq(50,200,length.out=5),labels=seq(0,1,length.out=5),cex.axis=0.7,cex.lab=0.7)
+	axis(1,at=seq(50,300,length.out=5),labels=seq(0,1,length.out=5),cex.axis=0.7,cex.lab=0.7)
 
 	# Leyenda de la figura
 	par(fig=c(0,1,0,1),new=TRUE,mar=c(0,3,0,1),oma=c(0,0,0,0))
@@ -211,20 +283,146 @@ dev.off()
 ###########################################################################################
 # Estimación de las muertes a través de la epidemia
 mort.dat			<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,3]>0,3]
-baq.mort.mles	<-	gen.log.optim(mort.dat,hessian=TRUE)
-
-new.cases			<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,3]>0,4]
+break.pt			<-	which(names(mort.dat)=="2020-09-01")
+tot.len			<-	length(mort.dat)
+baq.mort.mles	<-	gen.log.optim(mort.dat[1:break.pt],hessian=TRUE)
 
 K		<-	baq.mort.mles$mles["K","MLE"]
 r		<-	baq.mort.mles$mles["r","MLE"]
 theta	<-	baq.mort.mles$mles["theta","MLE"]
 alpha	<-	baq.mort.mles$mles["alpha","MLE"]
 
-obs.len		<-	length(mort.dat)
+obs.len		<-	length(mort.dat[1:break.pt])
 baq.pred	<-	gen.log.mod(K,r,theta,alpha,t=1:obs.len)
 baq.pred.ci	<-	gen.log.cis(baq.mort.mles,len=obs.len,sim.dist="Poisson",Bsims=10000,mean.width=20)
-baq.proy	<-	gen.log.predict(baq.mort.mles,t0=obs.len,len=30,Bsims=10000,sim.dist="Poisson",mean.width=10)
-baq.risk	<-	gen.log.risk(baq.proy,threshold=1:10)
+
+# Estimación del número de infectados fase 2 a partir de Septiembre 1 de 2020
+
+new.cases			<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,3]>0,4]
+
+# Estimación del número de infectados fase 2.
+# Modelando los casos nuevos
+# Casos nuevos
+
+new.cases2	<-	new.cases[(break.pt+1):(tot.len)]
+
+# Modelo Poisson
+x.vals		<-	1:length(new.cases2)
+mod2			<-	glm(new.cases2~x.vals,family="poisson")
+poisson.pred		<-	cumsum(c(tail(baq.pred,n=1),predict(mod2,type="response")))
+rmse.poisson		<-	sqrt(mean((mort.dat[1:(tot.len)] - c(baq.pred,poisson.pred[-1]))^2))
+# Modelo Negativo Binomial
+mod2.1	<-	glm.nb(new.cases2~x.vals)
+nb.pred	<-	cumsum(c(tail(baq.pred,n=1),predict(mod2.1,type="response")))
+rmse.nb	<-	sqrt(mean((inf.dat[1:(tot.len)] - c(baq.pred,nb.pred[-1]))^2))
+
+# Modelo logistico
+mort.dat2		<-	mort.dat[(break.pt+1):(tot.len)]
+mod3		<-	gen.log.optim(x=mort.dat2)
+K2	<-	mod3$mles["K","MLE"]
+r2	<-	mod3$mles["r","MLE"]
+theta2	<-	mod3$mles["theta","MLE"]
+alpha2	<-	mod3$mles["alpha","MLE"]
+genlog.pred	<-	c(baq.pred,gen.log.mod(K2,r2,theta2,alpha2,t=1:length(inf.dat2)))
+rmse.genlog2	<-	sqrt(mean((inf.dat[1:(tot.len)] - genlog.pred)^2))
+
+# Selección del mejor modelo según el crecimiento
+best.mod		<-	which.min(c(rmse.poisson,rmse.nb,rmse.genlog2))
+
+
+if(best.mod==1){
+	# Modelo de poisson es el mejor de acuerdo con la raíz cuadrada del error medio	
+	pred.xvals	<-	1:(length(new.cases2)+30)
+	mod2.pred<-	predict(mod2,newdata=data.frame(x.vals=pred.xvals),type="response")
+
+	# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
+	Bsims	<-	1000
+	n.cases	<-	length(new.cases2)
+	boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+	for(i in 1:Bsims){
+	
+		ith.dat	<-	rpois(n.cases,lambda=new.cases2)
+		ith.mod	<-	glm(ith.dat~x.vals,family="poisson")
+		ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+		boot.mat[i,]<-	ith.predict
+	
+	}
+
+	mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+
+	obs.len2	<-	length(new.cases2)
+	Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+	cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(baq.pred.ci$Predicted[,1],n=1)
+					,cumsum(Predicted.new.mat[,2])+tail(baq.pred.ci$Predicted[,2],n=1)
+					,cumsum(Predicted.new.mat[,3])+tail(baq.pred.ci$Predicted[,3],n=1))
+	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])
+	
+	# Estimación del riesgo
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=1:10)
+	
+	# Actualización de los resultados dados los dos modelos
+	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+	baq.pred.ci$Predicted.new	<-	rbind(baq.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+	baq.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
+	
+		
+}else if(best.mod==2){
+	# Modelo negativo binomial es el mejor de acuerdo con la raíz cuadrada del error medio
+	pred.xvals	<-	1:(length(new.cases2)+30)
+	mod2.pred<-	predict(mod2.1,newdata=data.frame(x.vals=pred.xvals),type="response")
+
+	# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
+	Bsims	<-	1000
+	n.cases	<-	length(new.cases2)
+	boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+	for(i in 1:Bsims){
+	
+		ith.dat	<-	rnbinom(n.cases,mu=new.cases2,size=mod2.1$theta)
+		ith.mod	<-	glm.nb(ith.dat~x.vals)
+		ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+		boot.mat[i,]<-	ith.predict
+	
+	}
+
+	mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+
+	obs.len2	<-	length(new.cases2)
+	Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+	cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(baq.pred.ci$Predicted[,1],n=1)
+						,cumsum(Predicted.new.mat[,2])+tail(baq.pred.ci$Predicted[,2],n=1)
+						,cumsum(Predicted.new.mat[,3])+tail(baq.pred.ci$Predicted[,3],n=1))
+	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])
+	
+	# Estimación del riesgo
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=1:10)
+	
+	# Actualización de los resultados dados los dos modelos
+	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+	baq.pred.ci$Predicted.new	<-	rbind(baq.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+	baq.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
+	
+} else{
+	# Modelo logistico generalizado es el mejor de acuerdo con la raíz cuadrada del error medio
+	pred.xvals	<-	1:(length(new.cases2))
+	mod3.pred	<-	gen.log.mod(K2,r2,theta2,alpha2,t=pred.xvals)
+	new.cases.init	<-	new.cases2[1]
+	mod3.ci		<-	tryCatch(gen.log.cis(gen.log.optim.out=mod3,len=length(pred.xvals),Bsims=10000,sim.dist="NegBin",mean.width=20,n0=new.cases.init)
+							,error=function(e){gen.log.cis(gen.log.optim.out=mod3,len=length(pred.xvals),Bsims=10000,sim.dist="Poisson",n0=new.cases.init)})
+	obs.len2	<-	length(new.cases2)
+	mod3.proy	<-	tryCatch(gen.log.predict(mod3,t0=obs.len2,len=30,Bsims=10000,sim.dist="NegBin",mean.width=20,n0=new.cases.init)
+							,error=function(e)gen.log.predict(mod3,t0=obs.len2,len=30,Bsims=10000,sim.dist="Poisson",n0=new.cases.init))
+							
+	# Actualización de los resultados dados los dos modelos
+	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,mod3.ci$Predicted)
+	baq.pred.ci$Predicted.new	<-	rbind(baq.pred.ci$Predicted.new,mod3.ci$Predicted.new)
+	baq.proy		<-	mod3.proy
+	
+	# Estimación del riesgo
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=baq.proy,threshold=1:10)
+	
+}
 
 first.date	<-	head(names(mort.dat),n=1)
 obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=obs.len)
@@ -240,7 +438,7 @@ resultados$Barranquilla$Consolidado$Fallecidos	<-	list(Estimacion=baq.mort.mles,
 ###########################################################################################
 # Figuras de la estimación
 first.date	<-	head(names(mort.dat),n=1)
-obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=obs.len)
+obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=tot.len)
 last.date	<-	tail(names(mort.dat),n=1)
 proy.dates<-seq.Date(as.Date(last.date),by="days",length.out=30)
 
@@ -303,20 +501,148 @@ if(plot.it){
 ###########################################################################################
 # Estimación del Recuperados
 recov.dat		<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,5]>0,5]
-baq.recov.mles	<-	gen.log.optim(recov.dat,hessian=TRUE)
+break.pt			<-	which(names(recov.dat)=="2020-09-01")
+tot.len			<-	length(recov.dat)
+
+baq.recov.mles	<-	gen.log.optim(recov.dat[1:break.pt],hessian=TRUE)
 
 K	<-	baq.recov.mles$mles["K","MLE"]
 r	<-	baq.recov.mles$mles["r","MLE"]
 theta	<-	baq.recov.mles$mles["theta","MLE"]
 alpha	<-	baq.recov.mles$mles["alpha","MLE"]
 
-obs.len		<-	length(recov.dat)
+obs.len		<-	length(recov.dat[1:break.pt])
 baq.pred	<-	gen.log.mod(K,r,theta,alpha,t=1:obs.len)
 baq.pred.ci	<-	gen.log.cis(baq.recov.mles,len=obs.len,Bsims=10000,sim.dist="NegBin")
-baq.proy	<-	gen.log.predict(baq.recov.mles,t0=obs.len,len=30,Bsims=10000,sim.dist="NegBin")
-baq.risk	<-	gen.log.risk(baq.proy,threshold=1:100)
+
+# Estimación del número de infectados fase 2 a partir de Septiembre 1 de 2020
 
 new.cases			<-	data.ciudad$BARRANQUILLA[data.ciudad$BARRANQUILLA[,5]>0,6]
+
+# Estimación del número de infectados fase 2.
+# Modelando los casos nuevos
+# Casos nuevos
+
+new.cases2	<-	new.cases[(break.pt+1):(tot.len)]
+
+# Modelo Poisson
+x.vals		<-	1:length(new.cases2)
+mod2			<-	glm(new.cases2~x.vals,family="poisson")
+poisson.pred		<-	cumsum(c(tail(baq.pred,n=1),predict(mod2,type="response")))
+rmse.poisson		<-	sqrt(mean((mort.dat[1:(tot.len)] - c(baq.pred,poisson.pred[-1]))^2))
+# Modelo Negativo Binomial
+mod2.1	<-	glm.nb(new.cases2~x.vals)
+nb.pred	<-	cumsum(c(tail(baq.pred,n=1),predict(mod2.1,type="response")))
+rmse.nb	<-	sqrt(mean((inf.dat[1:(tot.len)] - c(baq.pred,nb.pred[-1]))^2))
+
+# Modelo logistico
+recov.dat2		<-	recov.dat[(break.pt+1):(tot.len)]
+mod3		<-	gen.log.optim(x=recov.dat2)
+K2	<-	mod3$mles["K","MLE"]
+r2	<-	mod3$mles["r","MLE"]
+theta2	<-	mod3$mles["theta","MLE"]
+alpha2	<-	mod3$mles["alpha","MLE"]
+genlog.pred	<-	c(baq.pred,gen.log.mod(K2,r2,theta2,alpha2,t=1:length(inf.dat2)))
+rmse.genlog2	<-	sqrt(mean((inf.dat[1:(tot.len)] - genlog.pred)^2))
+
+# Selección del mejor modelo según el crecimiento
+best.mod		<-	which.min(c(rmse.poisson,rmse.nb,rmse.genlog2))
+
+
+if(best.mod==1){
+	# Modelo de poisson es el mejor de acuerdo con la raíz cuadrada del error medio	
+	pred.xvals	<-	1:(length(new.cases2)+30)
+	mod2.pred<-	predict(mod2,newdata=data.frame(x.vals=pred.xvals),type="response")
+
+	# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
+	Bsims	<-	1000
+	n.cases	<-	length(new.cases2)
+	boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+	for(i in 1:Bsims){
+	
+		ith.dat	<-	rpois(n.cases,lambda=new.cases2)
+		ith.mod	<-	glm(ith.dat~x.vals,family="poisson")
+		ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+		boot.mat[i,]<-	ith.predict
+	
+	}
+
+	mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+
+	obs.len2	<-	length(new.cases2)
+	Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+	cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(baq.pred.ci$Predicted[,1],n=1)
+					,cumsum(Predicted.new.mat[,2])+tail(baq.pred.ci$Predicted[,2],n=1)
+					,cumsum(Predicted.new.mat[,3])+tail(baq.pred.ci$Predicted[,3],n=1))
+	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])
+	
+	# Estimación del riesgo
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=1:300)
+	
+	# Actualización de los resultados dados los dos modelos
+	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+	baq.pred.ci$Predicted.new	<-	rbind(baq.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+	baq.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
+	
+		
+}else if(best.mod==2){
+	# Modelo negativo binomial es el mejor de acuerdo con la raíz cuadrada del error medio
+	pred.xvals	<-	1:(length(new.cases2)+30)
+	mod2.pred<-	predict(mod2.1,newdata=data.frame(x.vals=pred.xvals),type="response")
+
+	# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
+	Bsims	<-	1000
+	n.cases	<-	length(new.cases2)
+	boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+	for(i in 1:Bsims){
+	
+		ith.dat	<-	rnbinom(n.cases,mu=new.cases2,size=mod2.1$theta)
+		ith.mod	<-	glm.nb(ith.dat~x.vals)
+		ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+		boot.mat[i,]<-	ith.predict
+	
+	}
+
+	mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+
+	obs.len2	<-	length(new.cases2)
+	Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+	cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(baq.pred.ci$Predicted[,1],n=1)
+						,cumsum(Predicted.new.mat[,2])+tail(baq.pred.ci$Predicted[,2],n=1)
+						,cumsum(Predicted.new.mat[,3])+tail(baq.pred.ci$Predicted[,3],n=1))
+	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])
+	
+	# Estimación del riesgo
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=1:300)
+	
+	# Actualización de los resultados dados los dos modelos
+	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+	baq.pred.ci$Predicted.new	<-	rbind(baq.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+	baq.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
+	
+} else{
+	# Modelo logistico generalizado es el mejor de acuerdo con la raíz cuadrada del error medio
+	pred.xvals	<-	1:(length(new.cases2))
+	mod3.pred	<-	gen.log.mod(K2,r2,theta2,alpha2,t=pred.xvals)
+	new.cases.init	<-	new.cases2[1]
+	mod3.ci		<-	tryCatch(gen.log.cis(gen.log.optim.out=mod3,len=length(pred.xvals),Bsims=10000,sim.dist="NegBin",mean.width=20,n0=new.cases.init)
+							,error=function(e){gen.log.cis(gen.log.optim.out=mod3,len=length(pred.xvals),Bsims=10000,sim.dist="Poisson",n0=new.cases.init)})
+	obs.len2	<-	length(new.cases2)
+	mod3.proy	<-	tryCatch(gen.log.predict(mod3,t0=obs.len2,len=30,Bsims=10000,sim.dist="NegBin",mean.width=20,n0=new.cases.init)
+							,error=function(e)gen.log.predict(mod3,t0=obs.len2,len=30,Bsims=10000,sim.dist="Poisson",n0=new.cases.init))
+							
+	# Actualización de los resultados dados los dos modelos
+	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,mod3.ci$Predicted)
+	baq.pred.ci$Predicted.new	<-	rbind(baq.pred.ci$Predicted.new,mod3.ci$Predicted.new)
+	baq.proy		<-	mod3.proy
+	
+	# Estimación del riesgo
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=baq.proy,threshold=1:300)
+	
+}
+
 
 first.date	<-	head(names(recov.dat),n=1)
 obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=obs.len)
@@ -332,7 +658,7 @@ resultados$Barranquilla$Consolidado$Recuperados	<-	list(Estimacion=baq.recov.mle
 ###########################################################################################
 # Figuras de la estimación
 first.date	<-	head(names(recov.dat),n=1)
-obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=obs.len)
+obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=tot.len)
 last.date	<-	tail(names(recov.dat),n=1)
 proy.dates<-seq.Date(as.Date(last.date),by="days",length.out=30)
 
@@ -371,16 +697,16 @@ if(plot.it){
 	mtext("B.",side=3,adj=0.1)
 
 	# Figura C. Probabilidad de observar un número determinado de casos nuevos
-	image(x=proy.dates,y=1:100,t(baq.risk),zlim=c(0,1),xlim=range(proy.dates),ylim=c(1,100)
-			,col=rev(my.col.ramp(100)),xlab="",ylab="Número de casos nuevos"
+	image(x=proy.dates,y=1:300,t(baq.risk),zlim=c(0,1),xlim=range(proy.dates),ylim=c(1,300)
+			,col=rev(my.col.ramp(300)),xlab="",ylab="Número de casos nuevos"
 			,cex.axis=0.7,cex.lab=0.7)
 	box()
 	mtext("C.",side=3,adj=0.1)
 	par(mar=c(2.5,2.5,0,1))
-	image(x=1:100,y=1,z=matrix(seq(0,1,length.out=100),ncol=1),col=rev(my.col.ramp(100))
+	image(x=1:300,y=1,z=matrix(seq(0,1,length.out=300),ncol=1),col=rev(my.col.ramp(300))
 			,xaxt="n",yaxt="n",xlab="Probabilidad de 	nuevos casos",cex.lab=0.7,ylab="")
 	box()
-	axis(1,at=seq(1,100,length.out=5),labels=seq(0,1,length.out=5),cex.axis=0.7,cex.lab=0.7)
+	axis(1,at=seq(1,300,length.out=5),labels=seq(0,1,length.out=5),cex.axis=0.7,cex.lab=0.7)
 	
 	# Leyenda de la figura
 	par(fig=c(0,1,0,1),new=TRUE,mar=c(0,3,0,1),oma=c(0,0,0,0))
@@ -399,8 +725,8 @@ dev.off()
 #######################################################################
 alcaldia.locs	<-	c("METROPOLITANA","NORTE - CENTRO HISTORICO","RIOMAR","SUROCCIDENTE","SURORIENTE","NA")			
 data.locs	<-	getCOVID.data(wd=paste(path.dat,"Data",sep=""),location=alcaldia.locs,type=NA
-								,download=download,date.type="Diagnostico"
-								,data.origin="Alcaldia")
+								# ,download=download,date.type="Diagnostico"
+								# ,data.origin="Alcaldia")
 
 for (i in 1:length(alcaldia.locs)){
   #calculo Rt
@@ -427,67 +753,143 @@ for (i in 1:length(alcaldia.locs)){
 	ithloc.pred	<-	gen.log.mod(K,r,theta,alpha,t=1:obs.len)
 	ithloc.pred.ci	<-	gen.log.cis(gen.log.optim.out=ith.inf.mles,len=obs.len,Bsims=10000,sim.dist="NegBin",mean.width=20)
 
-	# En caso de requerir un proyección con base en el modelo logistico generalizado.
-	#ith.proy	<-	gen.log.predict(ith.inf.mles,t0=obs.len,len=30,Bsims=10000,sim.dist="NegBin",mean.width=20)
-	#ith.risk	<-	gen.log.risk(gen.log.proy.out=ith.proy,threshold=1:50)
-
-	# Sin embargo, hasta el 18 de Noviembre de 2020 la tasa de crecimiento posterior a la culminación de la
-	# primera ola no es suficiente para estimar los parametros de una nueva curva logistica. De esta forma 
-	# toamamos una aproximación diferente.
-
-	new.cases		<-	data.locs[[i]][data.locs[[i]][,1]>0,2]
-
 	# Estimación del número de infectados fase 2.
 	# Modelando los casos nuevos
 	# Casos nuevos
+
+	new.cases		<-	data.locs[[i]][data.locs[[i]][,1]>0,2]
 
 	new.cases2	<-	new.cases[(break.pt+1):(tot.len-4)]
 
 	# Modelo Poisson
 	x.vals		<-	1:length(new.cases2)
 	mod2		<-	glm(new.cases2~x.vals,family="poisson")
+	poisson.pred		<-	cumsum(c(tail(ithloc.pred,n=1),predict(mod2,type="response")))
+	rmse.poisson	<-	sqrt(mean((inf.dat[1:(tot.len-4)] - c(ithloc.pred,poisson.pred[-1]))^2))
+
 	# Modelo Negativo Binomial
 	mod2.1	<-	glm.nb(new.cases2~x.vals)
-
-	# Predicción del modelo negativo binomial 30 días en el futuro
-	pred.xvals	<-	1:(length(new.cases2)+34)
-	mod2.pred<-	predict(mod2.1,newdata=data.frame(x.vals=pred.xvals),type="response")
-
-	# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
-	Bsims	<-	1000
-	n.cases	<-	length(new.cases2)
-	boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
-
-	for(j in 1:Bsims){
+	nb.pred	<-	cumsum(c(tail(ithloc.pred,n=1),predict(mod2.1,type="response")))
+	rmse.nb	<-	sqrt(mean((inf.dat[1:(tot.len-4)] - c(ithloc.pred,nb.pred[-1]))^2))	
 	
-		ith.dat	<-	rnbinom(n.cases,mu=new.cases2,size=mod2.1$theta)
-		ith.mod	<-	glm.nb(ith.dat~x.vals)
-		ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
-		boot.mat[j,]<-	ith.predict
+	# Modelo logistico
+	inf.dat2	<-	inf.dat[(break.pt+1):(tot.len-4)]
+	mod3		<-	gen.log.optim(x=inf.dat2)
+	K2		<-	mod3$mles["K","MLE"]
+	r2		<-	mod3$mles["r","MLE"]
+	theta2	<-	mod3$mles["theta","MLE"]
+	alpha2	<-	mod3$mles["alpha","MLE"]
+	genlog.pred	<-	c(ithloc.pred,gen.log.mod(K2,r2,theta2,alpha2,t=1:length(inf.dat2)))
+	rmse.genlog2<-	sqrt(mean((inf.dat[1:(tot.len-4)] - genlog.pred)^2))
 
+	# Selección del mejor modelo según el crecimiento
+	best.mod		<-	which.min(c(rmse.poisson,rmse.nb,rmse.genlog2))
+
+	if(best.mod==1){
+		
+		# Predicción del modelo negativo binomial 30 días en el futuro
+		pred.xvals	<-	1:(length(new.cases2)+34)
+		mod2.pred<-	predict(mod2,newdata=data.frame(x.vals=pred.xvals),type="response")
+
+		# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
+		Bsims	<-	1000
+		n.cases	<-	length(new.cases2)
+		boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+		for(j in 1:Bsims){
+	
+			ith.dat	<-	rpois(n.cases,lambda=new.cases2)
+			ith.mod	<-	glm(ith.dat~x.vals,family="poisson")
+			ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+			boot.mat[j,]<-	ith.predict
+
+		}
+
+		mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+
+		obs.len2		<-	length(new.cases2)+4
+		Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+		cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(ithloc.pred.ci$Predicted[,1],n=1)
+							,cumsum(Predicted.new.mat[,2])+tail(ithloc.pred.ci$Predicted[,2],n=1)
+							,cumsum(Predicted.new.mat[,3])+tail(ithloc.pred.ci$Predicted[,3],n=1))
+		boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])	
+
+		# Estimación del riesgo
+		ithloc.risk	<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:300)
+		
+		# Actualización de los resultados dados los dos modelos
+		ithloc.pred.ci$Predicted	<-	rbind(ithloc.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+		ithloc.pred.ci$Predicted.new	<-	rbind(ithloc.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+		ithloc.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
+	
+	}else if(best.mod==2){
+			# Predicción del modelo negativo binomial 30 días en el futuro
+		pred.xvals	<-	1:(length(new.cases2)+34)
+		mod2.pred<-	predict(mod2.1,newdata=data.frame(x.vals=pred.xvals),type="response")
+
+		# Intervalos de confianza de las observaciones utilizando bootstrap parametrico	
+		Bsims	<-	1000
+		n.cases	<-	length(new.cases2)
+		boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+		for(j in 1:Bsims){
+	
+			ith.dat	<-	rnbinom(n.cases,mu=new.cases2,size=mod2.1$theta)
+			ith.mod	<-	glm.nb(ith.dat~x.vals)
+			ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+			boot.mat[j,]<-	ith.predict
+
+		}
+
+		mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+
+		obs.len2		<-	length(new.cases2)+4
+		Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+		cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(ithloc.pred.ci$Predicted[,1],n=1)
+							,cumsum(Predicted.new.mat[,2])+tail(ithloc.pred.ci$Predicted[,2],n=1)
+							,cumsum(Predicted.new.mat[,3])+tail(ithloc.pred.ci$Predicted[,3],n=1))
+		boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])	
+
+		# Estimación del riesgo
+		ithloc.risk	<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:300)
+		
+		# Actualización de los resultados dados los dos modelos
+		ithloc.pred.ci$Predicted	<-	rbind(ithloc.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+		ithloc.pred.ci$Predicted.new	<-	rbind(ithloc.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+		ithloc.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
+		
+
+	}else{
+		
+		# Modelo logistico generalizado es el mejor de acuerdo con la raíz cuadrada del error medio
+		pred.xvals	<-	1:(length(new.cases2)+4)
+		mod3.pred	<-	gen.log.mod(K2,r2,theta2,alpha2,t=pred.xvals)
+		new.cases.init	<-	new.cases2[1]
+		mod3.ci		<-	tryCatch(gen.log.cis(gen.log.optim.out=mod3,len=length(pred.xvals),Bsims=10000,sim.dist="NegBin",mean.width=20,n0=new.cases.init)
+								,error=function(e){gen.log.cis(gen.log.optim.out=mod3,len=length(pred.xvals),Bsims=10000,sim.dist="Poisson",n0=new.cases.init)})
+		obs.len2	<-	length(new.cases2)+4
+		mod3.proy	<-	tryCatch(gen.log.predict(mod3,t0=obs.len2,len=30,Bsims=10000,sim.dist="NegBin",mean.width=20,n0=new.cases.init)
+								,error=function(e)gen.log.predict(mod3,t0=obs.len2,len=30,Bsims=10000,sim.dist="Poisson",n0=new.cases.init))
+							
+		# Actualización de los resultados dados los dos modelos
+		ithloc.pred.ci$Predicted	<-	rbind(ithloc.pred.ci$Predicted,mod3.ci$Predicted)
+		ithloc.pred.ci$Predicted.new	<-	rbind(ithloc.pred.ci$Predicted.new,mod3.ci$Predicted.new)
+		ithloc.proy		<-	mod3.proy
+	
+		# Estimación del riesgo
+		ithloc.risk		<-	gen.log.risk(gen.log.proy.out=ithloc.proy,threshold=50:300)
+		
+		# Actualización de los resultados dados los dos modelos
+		ithloc.pred.ci$Predicted	<-	rbind(ithloc.pred.ci$Predicted,mod3.ci$Predicted)
+		ithloc.pred.ci$Predicted.new	<-	rbind(ithloc.pred.ci$Predicted.new,mod3.ci$Predicted.new)
+		ithloc.proy		<-	mod3.proy
+	
 	}
-
-	mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
-
-	obs.len2		<-	length(new.cases2)+4
-	Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
-	cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(ithloc.pred.ci$Predicted[,1],n=1)
-						,cumsum(Predicted.new.mat[,2])+tail(ithloc.pred.ci$Predicted[,2],n=1)
-						,cumsum(Predicted.new.mat[,3])+tail(ithloc.pred.ci$Predicted[,3],n=1))
-	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])	
-
-	# Estimación del riesgo
-	ithloc.risk	<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:200)
-
+	
 	first.date	<-	head(names(inf.dat),n=1)
 	obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=tot.len)
 	last.date	<-	tail(names(inf.dat),n=1)
 	proy.dates<-seq.Date(as.Date(last.date),by="days",length.out=30)
-
-	# Actualización de los resultados dados los dos modelos
-	ithloc.pred.ci$Predicted	<-	rbind(ithloc.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
-	ithloc.pred.ci$Predicted.new	<-	rbind(ithloc.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
-	ithloc.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
 	
 	Datos=data.frame(acumulado=inf.dat,dario=new.cases)
 	
@@ -531,7 +933,7 @@ if(plot.it){
 	points(proy.dates,met.proy$Predicted.new[,3],type="l",col="darkorange",lty=2)
 	points(proy.dates,met.proy$Predicted.new[,2],type="l",col="darkorange")
 	ith.loc<-alcaldia.locs[i]
-	if(i==6){ith.loc<-"No Identificados"}
+	if(i==6){ith.loc<-"NO IDENTIFICADOS"}
 	mtext(ith.loc,adj=0.1,cex=0.8)
 
 	# Figura B. Numero de casos acumulados observados, predichos y proyectados
@@ -587,13 +989,7 @@ for(i in 2:(length(ciudades)+1)){
 	ithciud.pred	<-	gen.log.mod(K,r,theta,alpha,t=1:obs.len)
 	ithciud.pred.ci	<-	gen.log.cis(gen.log.optim.out=inf.mles,len=obs.len,Bsims=10000,sim.dist="NegBin",mean.width=mean.width)
 
-	# En caso de requerir un proyección con base en el modelo logistico generalizado.
-	#ith.proy	<-	gen.log.predict(ith.inf.mles,t0=obs.len,len=30,Bsims=10000,sim.dist="NegBin",mean.width=20)
-	#ith.risk	<-	gen.log.risk(gen.log.proy.out=ith.proy,threshold=1:50)
-
-	# Sin embargo, hasta el 18 de Noviembre de 2020 la tasa de crecimiento posterior a la culminación de la
-	# primera ola no es suficiente para estimar los parametros de una nueva curva logistica. De esta forma 
-	# toamamos una aproximación diferente.
+	# Estimación de la fase 2
 
 	new.cases	<-	data.ciudad[[i-1]][data.ciudad[[i-1]][,1]>0,2]
 
@@ -606,12 +1002,34 @@ for(i in 2:(length(ciudades)+1)){
 	# Modelo Poisson
 	x.vals		<-	1:length(new.cases2)
 	mod2		<-	glm(new.cases2~x.vals,family="poisson")
+	poisson.pred		<-	cumsum(c(tail(ithciud.pred,n=1),predict(mod2,type="response")))
+	rmse.poisson	<-	sqrt(mean((inf.dat[1:(tot.len-4)] - c(ithciud.pred,poisson.pred[-1]))^2))
+
 	# Modelo Negativo Binomial
 	mod2.1	<-	glm.nb(new.cases2~x.vals)
+	nb.pred	<-	cumsum(c(tail(ithciud.pred,n=1),predict(mod2.1,type="response")))
+	rmse.nb	<-	sqrt(mean((inf.dat[1:(tot.len-4)] - c(ithciud.pred,nb.pred[-1]))^2))	
+	
+	# Modelo logistico
+	inf.dat2	<-	inf.dat[(break.pt+1):(tot.len-4)]
+	mod3	<-	NA
+	while(length(mod3)==1){
+		mod3		<-	tryCatch(gen.log.optim(x=inf.dat2),error=function(e)NA)
+	}
+	K2		<-	mod3$mles["K","MLE"]
+	r2		<-	mod3$mles["r","MLE"]
+	theta2	<-	mod3$mles["theta","MLE"]
+	alpha2	<-	mod3$mles["alpha","MLE"]
+	genlog.pred	<-	c(ithciud.pred,gen.log.mod(K2,r2,theta2,alpha2,t=1:length(inf.dat2)))
+	rmse.genlog2<-	sqrt(mean((inf.dat[1:(tot.len-4)] - genlog.pred)^2))
 
+	# Selección del mejor modelo según el crecimiento
+	best.mod		<-	which.min(c(rmse.poisson,rmse.nb,rmse.genlog2))
+
+	if(best.mod==1){
 	# Predicción del modelo negativo binomial 30 días en el futuro
 	pred.xvals	<-	1:(length(new.cases2)+34)
-	mod2.pred<-	predict(mod2.1,newdata=data.frame(x.vals=pred.xvals),type="response")
+	mod2.pred<-	predict(mod2,newdata=data.frame(x.vals=pred.xvals),type="response")
 
 	# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
 	Bsims	<-	1000
@@ -620,8 +1038,8 @@ for(i in 2:(length(ciudades)+1)){
 
 	for(j in 1:Bsims){
 	
-		ith.dat	<-	rnbinom(n.cases,mu=new.cases2,size=mod2.1$theta)
-		ith.mod	<-	glm.nb(ith.dat~x.vals)
+		ith.dat	<-	rpois(n.cases,lambda=new.cases2)
+		ith.mod	<-	glm(ith.dat~x.vals,family="poisson")
 		ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
 		boot.mat[j,]<-	ith.predict
 
@@ -646,6 +1064,69 @@ for(i in 2:(length(ciudades)+1)){
 	ithciud.pred.ci$Predicted.new	<-	rbind(ithciud.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
 	ithciud.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
 	
+	}else if(best.mod==2){
+		pred.xvals	<-	1:(length(new.cases2)+34)
+		mod2.pred<-	predict(mod2.1,newdata=data.frame(x.vals=pred.xvals),type="response")
+
+		# Intervalos de confianza de las observaciones utilizando bootstrap parametrico
+		Bsims	<-	1000
+		n.cases	<-	length(new.cases2)
+		boot.mat		<-	matrix(0,nrow=Bsims,ncol=length(pred.xvals))
+
+		for(j in 1:Bsims){
+	
+			ith.dat	<-	rnbinom(n.cases,mu=new.cases2,size=mod2.1$theta)
+			ith.mod	<-	glm.nb(ith.dat~x.vals)
+			ith.predict	<-	predict(ith.mod,newdata=data.frame(x.vals=pred.xvals),type="response")
+			boot.mat[j,]<-	ith.predict
+
+		}
+
+		mod2.1.ci	<-	apply(boot.mat,2,quantile,prob=c(0.025,0.975))
+
+		obs.len2		<-	length(new.cases2)+4
+		Predicted.new.mat	<-	cbind(mod2.1.ci[1,],mod2.pred,mod2.1.ci[2,])
+		cum.new.mat	<-	cbind(cumsum(Predicted.new.mat[,1])+tail(ithciud.pred.ci$Predicted[,1],n=1)
+							,cumsum(Predicted.new.mat[,2])+tail(ithciud.pred.ci$Predicted[,2],n=1)
+							,cumsum(Predicted.new.mat[,3])+tail(ithciud.pred.ci$Predicted[,3],n=1))
+		boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])	
+
+		first.date	<-	head(names(inf.dat),n=1)
+		obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=tot.len)
+		last.date	<-	tail(names(inf.dat),n=1)
+		proy.dates<-seq.Date(as.Date(last.date),by="days",length.out=30)
+
+		# Actualización de los resultados dados los dos modelos
+		ithciud.pred.ci$Predicted	<-	rbind(ithciud.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
+		ithciud.pred.ci$Predicted.new	<-	rbind(ithciud.pred.ci$Predicted.new,Predicted.new.mat[1:obs.len2,])
+		ithciud.proy		<-	list(Predicted=cum.new.mat[(obs.len2):(obs.len2+29),],Predicted.new=Predicted.new.mat[(obs.len2):(obs.len2+29),])
+			
+	}else{
+	
+		# Modelo logistico generalizado es el mejor de acuerdo con la raíz cuadrada del error medio
+		pred.xvals	<-	1:(length(new.cases2)+4)
+		mod3.pred	<-	gen.log.mod(K2,r2,theta2,alpha2,t=pred.xvals)
+		new.cases.init	<-	new.cases2[1]
+		mod3.ci		<-	tryCatch(gen.log.cis(gen.log.optim.out=mod3,len=length(pred.xvals),Bsims=10000,sim.dist="NegBin"
+											,mean.width=40,n0=new.cases.init)
+								,error=function(e){gen.log.cis(gen.log.optim.out=mod3,len=length(pred.xvals),Bsims=10000,sim.dist="Poisson"
+															,n0=new.cases.init)})
+		obs.len2	<-	length(new.cases2)+4
+		mod3.proy	<-	tryCatch(gen.log.predict(gen.log.optim.out=mod3,t0=obs.len2,len=30,Bsims=10000,sim.dist="NegBin",mean.width=40
+												,n0=new.cases.init)
+								,error=function(e)gen.log.predict(mod3,t0=obs.len2,len=30,Bsims=10000,sim.dist="Poisson"
+																,n0=new.cases.init))
+							
+		# Actualización de los resultados dados los dos modelos
+		ithciud.pred.ci$Predicted	<-	rbind(ithciud.pred.ci$Predicted,mod3.ci$Predicted)
+		ithciud.pred.ci$Predicted.new	<-	rbind(ithciud.pred.ci$Predicted.new,mod3.ci$Predicted.new)
+		ithciud.proy		<-	mod3.proy
+	
+		# Estimación del riesgo
+		ithciud.risk		<-	gen.log.risk(gen.log.proy.out=ithciud.proy,threshold=50:300)
+					
+	}
+	
 	Datos=data.frame(acumulado=inf.dat,dario=new.cases)
 	
 	resultados[[i]]<-	list(Estimacion=inf.mles,Prediccion=ithciud.pred.ci
@@ -655,7 +1136,7 @@ for(i in 2:(length(ciudades)+1)){
 names(resultados)	<-	c("BARRANQUILLA",ciudades)
 
 if(plot.it){
-	ciudades	[4:5] <-	c("Bogotá D.C.", "Medellín")
+	ciudades		<-	c("Cali","Cartagena","Bucaramanga","Bogotá D.C.", "Medellín")
 	fig.name		<-	paste(path.figs,"Infectados_Ciudades.tiff",sep="")
 
 	tiff(fig.name,width=7,height=10.5,units="in",res=300

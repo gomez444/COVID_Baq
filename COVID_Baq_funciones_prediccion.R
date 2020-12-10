@@ -2,7 +2,7 @@
 #
 # Funciones para la predicción de casos una vez realizadad la optimización de parametros 
 # utilizando máxima verosimilitud via optimización numéricao clonación de datos.
-# Ultima actualización: 18 de Noviembre de 2020
+# Ultima actualización: 9 de Diciembre de 2020
 #
 ####################################################################################################
 
@@ -126,10 +126,11 @@ gompertz.predict	<-	function(optim.out,model.type,tpred,no,to,init.date){
 ####################################################################################################
 # Función para predecir a futuro la curva de acuerdo con el modelo logístico generalizado.
 # gen.log.optim.out = salida de la función gen.log.optim
-# t0 = número de días despues del inicio de la epidemia para don de se quiere inciar la predicción.
+# t0 = número de días despues del inicio de la epidemia donde se quiere inciar la predicción.
 # len = número de días para hacer la proyección.
 # Bsims = Número de simulaciones
 # sim.dist = "Poisson","NegBin". Ver descripción del modelo.
+# n0		= valor inicial del número de casos nuevos
 # Salida
 # Lista:
 # Predicted = matrix con el número acumulado de casos predichos en el futuro y los cuantules 2.5 y 97.5
@@ -137,8 +138,8 @@ gompertz.predict	<-	function(optim.out,model.type,tpred,no,to,init.date){
 # Sims = matriz de dimensión Bsims*len con las trayectorias de las simulaciones.
 
 gen.log.predict	<-	function(gen.log.optim.out,t0,len,Bsims=1000,sim.dist=c("Poisson","NegBin")
-							,mean.width=20){
-	
+							,mean.width=20,n0){
+	if(missing(mean.width)){mean.width=1}
 	mles	<-	gen.log.optim.out$mles
 	if(class(mles)=="matrix"){mles<-mles[,"MLE"]}
 	K<-mles[1]
@@ -147,7 +148,7 @@ gen.log.predict	<-	function(gen.log.optim.out,t0,len,Bsims=1000,sim.dist=c("Pois
 	sims		<-	matrix(0,nrow=Bsims,ncol=len)
 	sims.new<-	matrix(0,nrow=Bsims,ncol=len)
 	v.cov	<-	diag(diag(gen.log.optim.out$fish.inv))
-	mvn.draws4sim <- t(rmvnorm(n=Bsims, mean=log(mles),sigma=v.cov))
+	mvn.draws4sim <- t(rmvnorm(n=Bsims, mean=c(log(mles[1:3]),qlogis(mles[4])),sigma=v.cov))
 	mvn.draws4sim[1:3,] <-	exp(mvn.draws4sim[1:3,])
 	mvn.draws4sim[4,] <-	plogis(mvn.draws4sim[4,])
 	for(i in 1:Bsims){
@@ -159,16 +160,19 @@ gen.log.predict	<-	function(gen.log.optim.out,t0,len,Bsims=1000,sim.dist=c("Pois
 		
 		ith.det	<-	gen.log.mod(ith.K,ith.r,ith.theta,ith.alpha,1:(t0+(len)))
 		ith.len	<-	length(ith.det)
-		ith.new.det	<-	c(ith.det[1],ith.det[2:ith.len]-ith.det[1:(ith.len-1)])
-		mu		<-	mean(ith.new.det[(theta-mean.width):(theta+mean.width)])
-		s2		<-	var(ith.new.det[(theta-mean.width):(theta+mean.width)])
-		if(s2<mu){s2<-mu}
-		k.hat	<-	mu^2/(s2-mu)
+		if(missing(n0)){n0.hat<-ith.det[1]}else{n0.hat<-n0}
+		ith.new.det	<-	c(n0.hat,ith.det[2:ith.len]-ith.det[1:(ith.len-1)])
 		ith.new	<-	switch(sim.dist,Poisson=rpois(length(ith.det),ith.new.det)
-											,NegBin=rnbinom(length(ith.det)
+									,NegBin={mu		<-	mean(ith.new.det[(theta-mean.width):(theta+mean.width)])
+											s2		<-	var(ith.new.det[(theta-mean.width):(theta+mean.width)])
+											if(s2<mu){s2<-mu}
+											k.hat	<-	mu^2/(s2-mu)
+											rnbinom(length(ith.det)
 															,mu=ith.new.det
-															,size=k.hat))
-		sims[i,]			<-	cumsum(ith.new)[t0:(t0+len-1)]
+															,size=k.hat)})
+		if(missing(n0)){
+			sims[i,]			<-	cumsum(ith.new)[t0:(t0+len-1)]
+		}else{sims[i,]<-cumsum(c(ith.det[t0],ith.new[(t0+1):(t0+len-1)]))}
 		sims.new[i,]	<-	ith.new[t0:(t0+len-1)]
 		
 	}
