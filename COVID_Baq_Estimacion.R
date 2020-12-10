@@ -314,7 +314,7 @@ rmse.poisson		<-	sqrt(mean((mort.dat[1:(tot.len)] - c(baq.pred,poisson.pred[-1])
 # Modelo Negativo Binomial
 mod2.1	<-	glm.nb(new.cases2~x.vals)
 nb.pred	<-	cumsum(c(tail(baq.pred,n=1),predict(mod2.1,type="response")))
-rmse.nb	<-	sqrt(mean((inf.dat[1:(tot.len)] - c(baq.pred,nb.pred[-1]))^2))
+rmse.nb	<-	sqrt(mean((mort.dat[1:(tot.len)] - c(baq.pred,nb.pred[-1]))^2))
 
 # Modelo logistico
 mort.dat2		<-	mort.dat[(break.pt+1):(tot.len)]
@@ -323,8 +323,8 @@ K2	<-	mod3$mles["K","MLE"]
 r2	<-	mod3$mles["r","MLE"]
 theta2	<-	mod3$mles["theta","MLE"]
 alpha2	<-	mod3$mles["alpha","MLE"]
-genlog.pred	<-	c(baq.pred,gen.log.mod(K2,r2,theta2,alpha2,t=1:length(inf.dat2)))
-rmse.genlog2	<-	sqrt(mean((inf.dat[1:(tot.len)] - genlog.pred)^2))
+genlog.pred	<-	c(baq.pred,gen.log.mod(K2,r2,theta2,alpha2,t=1:length(mort.dat2)))
+rmse.genlog2	<-	sqrt(mean((mort.dat[1:(tot.len)] - genlog.pred)^2))
 
 # Selección del mejor modelo según el crecimiento
 best.mod		<-	which.min(c(rmse.poisson,rmse.nb,rmse.genlog2))
@@ -529,11 +529,11 @@ new.cases2	<-	new.cases[(break.pt+1):(tot.len)]
 x.vals		<-	1:length(new.cases2)
 mod2			<-	glm(new.cases2~x.vals,family="poisson")
 poisson.pred		<-	cumsum(c(tail(baq.pred,n=1),predict(mod2,type="response")))
-rmse.poisson		<-	sqrt(mean((mort.dat[1:(tot.len)] - c(baq.pred,poisson.pred[-1]))^2))
+rmse.poisson		<-	sqrt(mean((recov.dat[1:(tot.len)] - c(baq.pred,poisson.pred[-1]))^2))
 # Modelo Negativo Binomial
 mod2.1	<-	glm.nb(new.cases2~x.vals)
 nb.pred	<-	cumsum(c(tail(baq.pred,n=1),predict(mod2.1,type="response")))
-rmse.nb	<-	sqrt(mean((inf.dat[1:(tot.len)] - c(baq.pred,nb.pred[-1]))^2))
+rmse.nb	<-	sqrt(mean((recov.dat[1:(tot.len)] - c(baq.pred,nb.pred[-1]))^2))
 
 # Modelo logistico
 recov.dat2		<-	recov.dat[(break.pt+1):(tot.len)]
@@ -542,8 +542,8 @@ K2	<-	mod3$mles["K","MLE"]
 r2	<-	mod3$mles["r","MLE"]
 theta2	<-	mod3$mles["theta","MLE"]
 alpha2	<-	mod3$mles["alpha","MLE"]
-genlog.pred	<-	c(baq.pred,gen.log.mod(K2,r2,theta2,alpha2,t=1:length(inf.dat2)))
-rmse.genlog2	<-	sqrt(mean((inf.dat[1:(tot.len)] - genlog.pred)^2))
+genlog.pred	<-	c(baq.pred,gen.log.mod(K2,r2,theta2,alpha2,t=1:length(recov.dat2)))
+rmse.genlog2	<-	sqrt(mean((recov.dat[1:(tot.len)] - genlog.pred)^2))
 
 # Selección del mejor modelo según el crecimiento
 best.mod		<-	which.min(c(rmse.poisson,rmse.nb,rmse.genlog2))
@@ -725,8 +725,8 @@ dev.off()
 #######################################################################
 alcaldia.locs	<-	c("METROPOLITANA","NORTE - CENTRO HISTORICO","RIOMAR","SUROCCIDENTE","SURORIENTE","NA")			
 data.locs	<-	getCOVID.data(wd=paste(path.dat,"Data",sep=""),location=alcaldia.locs,type=NA
-								# ,download=download,date.type="Diagnostico"
-								# ,data.origin="Alcaldia")
+								 ,download=download,date.type="Diagnostico"
+								 ,data.origin="Alcaldia")
 
 for (i in 1:length(alcaldia.locs)){
   #calculo Rt
