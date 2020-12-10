@@ -139,7 +139,7 @@ if(best.mod==1){
 	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])
 	
 	# Estimación del riesgo
-	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:300)
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:200)
 	
 	# Actualización de los resultados dados los dos modelos
 	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
@@ -176,7 +176,7 @@ if(best.mod==1){
 	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])
 	
 	# Estimación del riesgo
-	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:300)
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=50:200)
 	
 	# Actualización de los resultados dados los dos modelos
 	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
@@ -200,7 +200,7 @@ if(best.mod==1){
 	baq.proy		<-	mod3.proy
 	
 	# Estimación del riesgo
-	baq.risk		<-	gen.log.risk(gen.log.proy.out=baq.proy,threshold=50:300)
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=baq.proy,threshold=50:200)
 	
 }
 
@@ -259,16 +259,16 @@ if(plot.it){
 	mtext("B.",side=3,adj=0.1)
 	
 	# Figura C. Probabilidad de observar un número determinado de casos nuevos
-	image(x=proy.dates,y=50:300,t(baq.risk),zlim=c(0,1),xlim=range(proy.dates)
-		,ylim=c(50,300),col=rev(my.col.ramp(251)),xlab="",ylab="Número de casos nuevos"
+	image(x=proy.dates,y=50:200,t(baq.risk),zlim=c(0,1),xlim=range(proy.dates)
+		,ylim=c(50,200),col=rev(my.col.ramp(151)),xlab="",ylab="Número de casos nuevos"
 		,cex.axis=0.7,cex.lab=0.7)
 	box()
 	mtext("C.",side=3,adj=0.1)
 	par(mar=c(2.5,2.5,0,1))
-	image(x=50:300,y=1,z=matrix(seq(0,1,length.out=251),ncol=1),col=rev(my.col.ramp(251))
+	image(x=50:200,y=1,z=matrix(seq(0,1,length.out=151),ncol=1),col=rev(my.col.ramp(151))
 			,xaxt="n",yaxt="n",xlab="Probabilidad de nuevos casos",cex.lab=0.7,ylab="")
 	box()
-	axis(1,at=seq(50,300,length.out=5),labels=seq(0,1,length.out=5),cex.axis=0.7,cex.lab=0.7)
+	axis(1,at=seq(50,200,length.out=5),labels=seq(0,1,length.out=5),cex.axis=0.7,cex.lab=0.7)
 
 	# Leyenda de la figura
 	par(fig=c(0,1,0,1),new=TRUE,mar=c(0,3,0,1),oma=c(0,0,0,0))
@@ -425,7 +425,7 @@ if(best.mod==1){
 }
 
 first.date	<-	head(names(mort.dat),n=1)
-obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=obs.len)
+obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=tot.len)
 last.date	<-	tail(names(mort.dat),n=1)
 proy.dates<-seq.Date(as.Date(last.date),by="days",length.out=30)
 
@@ -578,7 +578,7 @@ if(best.mod==1){
 	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])
 	
 	# Estimación del riesgo
-	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=1:300)
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=1:100)
 	
 	# Actualización de los resultados dados los dos modelos
 	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
@@ -615,7 +615,7 @@ if(best.mod==1){
 	boot.list	<-	list(Predicted.new = Predicted.new.mat[obs.len2:(obs.len2+29),], Sims=boot.mat[,obs.len2:(obs.len2+29)])
 	
 	# Estimación del riesgo
-	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=1:300)
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=boot.list,threshold=1:100)
 	
 	# Actualización de los resultados dados los dos modelos
 	baq.pred.ci$Predicted	<-	rbind(baq.pred.ci$Predicted,cum.new.mat[1:obs.len2,])
@@ -639,13 +639,13 @@ if(best.mod==1){
 	baq.proy		<-	mod3.proy
 	
 	# Estimación del riesgo
-	baq.risk		<-	gen.log.risk(gen.log.proy.out=baq.proy,threshold=1:300)
+	baq.risk		<-	gen.log.risk(gen.log.proy.out=baq.proy,threshold=1:100)
 	
 }
 
 
 first.date	<-	head(names(recov.dat),n=1)
-obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=obs.len)
+obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=tot.len)
 last.date	<-	tail(names(recov.dat),n=1)
 proy.dates<-seq.Date(as.Date(last.date),by="days",length.out=30)
 
@@ -697,16 +697,16 @@ if(plot.it){
 	mtext("B.",side=3,adj=0.1)
 
 	# Figura C. Probabilidad de observar un número determinado de casos nuevos
-	image(x=proy.dates,y=1:300,t(baq.risk),zlim=c(0,1),xlim=range(proy.dates),ylim=c(1,300)
-			,col=rev(my.col.ramp(300)),xlab="",ylab="Número de casos nuevos"
+	image(x=proy.dates,y=1:100,t(baq.risk),zlim=c(0,1),xlim=range(proy.dates),ylim=c(1,100)
+			,col=rev(my.col.ramp(100)),xlab="",ylab="Número de casos nuevos"
 			,cex.axis=0.7,cex.lab=0.7)
 	box()
 	mtext("C.",side=3,adj=0.1)
 	par(mar=c(2.5,2.5,0,1))
-	image(x=1:300,y=1,z=matrix(seq(0,1,length.out=300),ncol=1),col=rev(my.col.ramp(300))
+	image(x=1:100,y=1,z=matrix(seq(0,1,length.out=100),ncol=1),col=rev(my.col.ramp(100))
 			,xaxt="n",yaxt="n",xlab="Probabilidad de 	nuevos casos",cex.lab=0.7,ylab="")
 	box()
-	axis(1,at=seq(1,300,length.out=5),labels=seq(0,1,length.out=5),cex.axis=0.7,cex.lab=0.7)
+	axis(1,at=seq(1,100,length.out=5),labels=seq(0,1,length.out=5),cex.axis=0.7,cex.lab=0.7)
 	
 	# Leyenda de la figura
 	par(fig=c(0,1,0,1),new=TRUE,mar=c(0,3,0,1),oma=c(0,0,0,0))
@@ -878,11 +878,6 @@ for (i in 1:length(alcaldia.locs)){
 	
 		# Estimación del riesgo
 		ithloc.risk		<-	gen.log.risk(gen.log.proy.out=ithloc.proy,threshold=50:300)
-		
-		# Actualización de los resultados dados los dos modelos
-		ithloc.pred.ci$Predicted	<-	rbind(ithloc.pred.ci$Predicted,mod3.ci$Predicted)
-		ithloc.pred.ci$Predicted.new	<-	rbind(ithloc.pred.ci$Predicted.new,mod3.ci$Predicted.new)
-		ithloc.proy		<-	mod3.proy
 	
 	}
 	
@@ -896,7 +891,7 @@ for (i in 1:length(alcaldia.locs)){
 	resultados$Barranquilla$Localidades[[i]]	<-	list(Estimacion=ith.inf.mles,Prediccion=ithloc.pred.ci
 																,Proyeccion=ithloc.proy
 																,Riesgo=ithloc.risk,fechas=list(obs=obs.dates,proy=proy.dates),Datos=Datos)
-	resultados$Barranquilla$Localidades[[i]]$Rt <- list(Rt=Rt.baq,fechas=Rt_fechas,nobs=Rt_n.obs, nuevos_casos=Rt_nuevos.casos)
+	#resultados$Barranquilla$Localidades[[i]]$Rt <- list(Rt=Rt.baq,fechas=Rt_fechas,nobs=Rt_n.obs, nuevos_casos=Rt_nuevos.casos)
 	
 }
 alcaldia.locs[6]	<-	"na"
@@ -967,7 +962,7 @@ if(plot.it){
 # Obtener datos
 ciudades <- c("CALI","CARTAGENA","BUCARAMANGA","BOGOTA","MEDELLIN")
 data.ciudad	<-	getCOVID.data(wd=path.dat
-							,location=ciudades,type="Municipio",download=download,date.type="Diagnostico"
+							,location=ciudades,type="Municipio",download=FALSE,date.type="Diagnostico"
 							,data.origin="INS")
 
 # Estimación del número de infectados
@@ -1122,8 +1117,10 @@ for(i in 2:(length(ciudades)+1)){
 		ithciud.pred.ci$Predicted.new	<-	rbind(ithciud.pred.ci$Predicted.new,mod3.ci$Predicted.new)
 		ithciud.proy		<-	mod3.proy
 	
-		# Estimación del riesgo
-		ithciud.risk		<-	gen.log.risk(gen.log.proy.out=ithciud.proy,threshold=50:300)
+		first.date	<-	head(names(inf.dat),n=1)
+		obs.dates	<-	seq.Date(as.Date(first.date),by="days",length.out=tot.len)
+		last.date	<-	tail(names(inf.dat),n=1)
+		proy.dates<-seq.Date(as.Date(last.date),by="days",length.out=30)
 					
 	}
 	
@@ -1136,8 +1133,8 @@ for(i in 2:(length(ciudades)+1)){
 names(resultados)	<-	c("BARRANQUILLA",ciudades)
 
 if(plot.it){
-	ciudades		<-	c("Cali","Cartagena","Bucaramanga","Bogotá D.C.", "Medellín")
-	fig.name		<-	paste(path.figs,"Infectados_Ciudades.tiff",sep="")
+	ciudades.plot	<-	c("Cali","Cartagena","Bucaramanga","Bogotá D.C.", "Medellín")
+	fig.name			<-	paste(path.figs,"Infectados_Ciudades.tiff",sep="")
 
 	tiff(fig.name,width=7,height=10.5,units="in",res=300
 	,type="cairo",compression="lzw",family="times")
@@ -1166,7 +1163,7 @@ if(plot.it){
 		points(proy.dates,met.proy$Predicted.new[,1],type="l",col="darkorange",lty=2)
 		points(proy.dates,met.proy$Predicted.new[,3],type="l",col="darkorange",lty=2)
 		points(proy.dates,met.proy$Predicted.new[,2],type="l",col="darkorange")
-		ith.loc<-ciudades[i-1]
+		ith.loc<-ciudades.plot[i-1]
 		mtext(ith.loc,adj=0.1,cex=0.8)
 
 		# Figura B. Numero de casos acumulados observados, predichos y proyectados
