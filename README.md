@@ -2,7 +2,7 @@
 Estimación de curvas epidémicas de COVID 19 en Barranquilla, localidades y otras ciudades en Colombia. 
 
 Ultima actualización: 
-Noviembre 19 de 2020
+Diciembre 9 de 2020
 
 Responsable del código y a quien deben ser dirigidas las inquietudes:
 Juan Pablo Gómez
